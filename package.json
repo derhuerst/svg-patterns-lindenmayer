@@ -4,7 +4,8 @@
 	"version": "0.1.0",
 	"main": "index.js",
 	"files": [
-		"index.js"
+		"index.js",
+		"lib"
 	],
 	"keywords": [
 		"lindenmayer",
@@ -21,6 +22,7 @@
 		"node": ">=6"
 	},
 	"dependencies": {
+		"h2ml": "^1.0.0"
 	},
 	"devDependencies": {
 		"tap-min": "^1.2.2",
