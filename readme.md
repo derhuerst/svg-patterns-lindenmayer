@@ -1,6 +1,11 @@
 # svg-patterns-lindenmayer
 
-**Use [Lindenmayer systems](https://en.wikipedia.org/wiki/L-system) as SVG patterns.**
+**Use [Lindenmayer systems](https://en.wikipedia.org/wiki/L-system) as SVG patterns.** Work in progess. In particular, the following is missing:
+
+- tests
+- helpful example code that yields a nice-looking pattern
+- publishing to npm
+- compatibility with [`svg-patterns`](https://github.com/derhuerst/svg-patterns#svg-patterns)
 
 [![npm version](https://img.shields.io/npm/v/svg-patterns-lindenmayer.svg)](https://www.npmjs.com/package/svg-patterns-lindenmayer)
 [![build status](https://api.travis-ci.org/derhuerst/svg-patterns-lindenmayer.svg?branch=master)](https://travis-ci.org/derhuerst/svg-patterns-lindenmayer)
@@ -18,7 +23,14 @@ npm install svg-patterns-lindenmayer
 ## Usage
 
 ```js
-todo
+const generate = require('svg-patterns-lindenmayer')
+
+const svg = generate(5, 'A', {
+	A: 'B',
+	B: 'F++OB'
+})
+
+console.log(svg)
 ```
 
 
