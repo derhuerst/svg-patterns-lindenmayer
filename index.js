@@ -116,8 +116,28 @@ const defaultOpts = {
 	colors: ['red', 'black', 'blue']
 }
 
+const defaultAtoms = {
+	F: drawLine,
+	f: drawLineHalf,
+	M: move,
+	m: moveHalf,
+	'+': turnClockwise,
+	'-': turnCounterclockwise,
+	'[': savePositionAngle,
+	']': restorePositionAngle,
+	'{': saveColor,
+	'}': restoreColor,
+	S: switchColor,
+	O: scaleUp,
+	Z: scaleDown,
+	'=': flipHorizontally,
+	'|': flipVertically,
+	'$': hump
+}
+
 const generate = (iterations, axiom, rules, opt = {}) => {
 	opt = Object.assign({}, defaultOpts, opt)
+	const atoms = Object.assign({}, defaultAtoms, opt.atoms)
 
 	const ctx = {
 		items: [
@@ -143,26 +163,13 @@ circle {
 		d: null // "d" attribute of the current path, used by _finishLine
 	}
 
-	const atoms = {
-		F: () => drawLine(ctx, opt),
-		f: () => drawLineHalf(ctx, opt),
-		M: () => move(ctx, opt),
-		m: () => moveHalf(ctx, opt),
-		'+': () => turnClockwise(ctx, opt),
-		'-': () => turnCounterclockwise(ctx, opt),
-		'[': () => savePositionAngle(ctx, opt),
-		']': () => restorePositionAngle(ctx, opt),
-		'{': () => saveColor(ctx, opt),
-		'}': () => restoreColor(ctx, opt),
-		S: () => switchColor(ctx, opt),
-		O: () => scaleUp(ctx, opt),
-		Z: () => scaleDown(ctx, opt),
-		'=': () => flipHorizontally(ctx, opt),
-		'|': () => flipVertically(ctx, opt),
-		'$': () => hump(ctx, opt)
-	}
+	const atomsWrapped = Object.keys(atoms).reduce((acc, name) => {
+		const wrappedAtom = () => atoms[name](ctx, opt)
+		acc[name] = wrappedAtom
+		return acc
+	}, Object.create(null))
 
-	const generate = lindenmayer(rules, atoms)
+	const generate = lindenmayer(rules, atomsWrapped)
 	generate(axiom, iterations)
 	_finishLine(ctx, opt)
 
