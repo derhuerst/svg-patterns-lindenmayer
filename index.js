@@ -4,22 +4,124 @@ const h = require('h2ml')
 
 const lindenmayer = require('./lib/lindenmayer')
 
-const defaults = {
+const round = v => Math.round(v * 1000) / 1000
+
+const _moveTo = (ctx, nX, nY) => {
+	ctx.x = nX
+	ctx.y = nY
+	if (nX < ctx.minX) ctx.minX = nX
+	else if (nX > ctx.maxX) ctx.maxX = nX
+	if (nY < ctx.minY) ctx.minY = nY
+	else if (nY > ctx.maxY) ctx.maxY = nY
+}
+
+const _finishLine = (ctx, opt) => {
+	if (ctx.d) {
+		ctx.items.push(h('path', {
+			d: ctx.d,
+			stroke: opt.colors[ctx.color],
+			'stroke-width': '' + round(Math.sqrt(Math.abs(ctx.scaleX)))
+		}))
+		ctx.d = null
+	}
+}
+const _continueLine = (ctx, l) => {
+	const dX = Math.cos(ctx.angle) * l * ctx.scaleX
+	const dY = Math.sin(ctx.angle) * l * ctx.scaleY
+
+	if (!ctx.d) ctx.d = `M ${round(ctx.x)} ${round(ctx.y)}`
+	ctx.d += `l ${round(dX)} ${round(dY)}`
+	_moveTo(ctx, ctx.x + dX, ctx.y + dY)
+}
+
+const drawLine = (ctx, opt) => _continueLine(ctx, opt.distance)
+const drawLineHalf = (ctx, opt) => _continueLine(ctx, opt.distance * .5)
+
+const _moveBy = (ctx, opt, l) => {
+	_finishLine(ctx, opt)
+	const dX = Math.cos(ctx.angle) * l * ctx.scaleX
+	const dY = Math.sin(ctx.angle) * l * ctx.scaleY
+	_moveTo(ctx, ctx.x + dX, ctx.y + dY)
+}
+const move = (ctx, opt) => _moveBy(ctx, opt, opt.distance)
+const moveHalf = (ctx, opt) => _moveBy(ctx, opt, opt.distance * .5)
+
+const turnClockwise = (ctx, opt) => {
+	ctx.angle += opt.angle
+}
+const turnCounterclockwise = (ctx, opt) => {
+	ctx.angle -= opt.angle
+}
+
+const switchColor = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.color = (ctx.color + 1) % opt.colors.length
+}
+
+const savePositionAngle = (ctx, opt) => {
+	ctx.xStack.push(ctx.x)
+	ctx.yStack.push(ctx.y)
+	ctx.angleStack.push(ctx.angle)
+}
+const restorePositionAngle = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.x = ctx.xStack.pop()
+	ctx.y = ctx.yStack.pop()
+	ctx.angle = ctx.angleStack.pop()
+}
+
+const saveColor = (ctx, opt) => {
+	ctx.colorStack.push(ctx.color)
+}
+const restoreColor = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.color = ctx.colorStack.pop()
+}
+
+const scaleUp = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.scaleX /= .8
+	ctx.scaleY /= .8
+}
+const scaleDown = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.scaleX *= .8
+	ctx.scaleY *= .8
+}
+
+const flipHorizontally = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.scaleX *= -1
+	ctx.x *= -1
+}
+const flipVertically = (ctx, opt) => {
+	_finishLine(ctx, opt)
+	ctx.scaleY *= -1
+	ctx.y *= -1
+}
+
+const hump = (ctx, opt) => {
+	ctx.items.push(h('circle', {
+		cx: '' + round(ctx.x),
+		cy: '' + round(ctx.y),
+		r: '' + round(1.5 * Math.abs(ctx.scaleX)),
+		stroke: opt.colors[ctx.color],
+		'stroke-width': '' + round(.7 * Math.sqrt(Math.abs(ctx.scaleX)))
+	}))
+}
+
+const defaultOpts = {
 	angle: Math.PI / 4,
 	distance: 10,
 	colors: ['red', 'black', 'blue']
 }
 
-const round = v => Math.round(v * 1000) / 1000
-
 const generate = (iterations, axiom, rules, opt = {}) => {
-	opt = Object.assign({}, defaults, opt)
-	const ANGLE = opt.angle
-	const DISTANCE = opt.distance
-	const COLORS = opt.colors
+	opt = Object.assign({}, defaultOpts, opt)
 
-	const items = [
-		h('style', {}, `
+	const ctx = {
+		items: [
+			h('style', {}, `
 path {
 	stroke-linecap: round;
 	stroke-linejoin: round;
@@ -28,154 +130,51 @@ path {
 circle {
 	fill: none;
 }`)
-	]
-
-	let minX = 0, minY = 0, maxX = 0, maxY = 0 // bbox
-	let scaleX = 1, scaleY = 1 // flip axes
-
-	let x = 0, y = 0
-	const xStack = []
-	const yStack = []
-	let angle = 0
-	const angleStack = []
-	let color = 0
-	const colorStack = []
-
-	const _moveTo = (nX, nY) => {
-		x = nX
-		y = nY
-		if (nX < minX) minX = nX
-		else if (nX > maxX) maxX = nX
-		if (nY < minY) minY = nY
-		else if (nY > maxY) maxY = nY
+		],
+		minX: 0, minY: 0, maxX: 0, maxY: 0, // bbox
+		scaleX: 1, scaleY: 1, // scale, flip axes
+		x: 0, y: 0,
+		xStack: [],
+		yStack: [],
+		angle: 0,
+		angleStack: [],
+		color: 0,
+		colorStack: [],
+		d: null // "d" attribute of the current path, used by _finishLine
 	}
 
-	let d = null
-	const _finishLine = (l) => {
-		if (d) {
-			items.push(h('path', {
-				d,
-				stroke: COLORS[color],
-				'stroke-width': '' + round(Math.sqrt(Math.abs(scaleX)))
-			}))
-			d = null
-		}
-	}
-	const _continueLine = (l) => {
-		const dX = Math.cos(angle) * l * scaleX
-		const dY = Math.sin(angle) * l * scaleY
-
-		if (!d) d = `M ${round(x)} ${round(y)}`
-		d += `l ${round(dX)} ${round(dY)}`
-		_moveTo(x + dX, y + dY)
-	}
-
-	const drawLine = () => _continueLine(DISTANCE)
-	const drawLineHalf = () => _continueLine(DISTANCE * .5)
-
-	const _moveBy = (l) => {
-		_finishLine()
-		const dX = Math.cos(angle) * l * scaleX
-		const dY = Math.sin(angle) * l * scaleY
-		_moveTo(x + dX, y + dY)
-	}
-	const move = () => _moveBy(DISTANCE)
-	const moveHalf = () => _moveBy(DISTANCE * .5)
-
-	const turnClockwise = () => {
-		angle += ANGLE
-	}
-	const turnCounterclockwise = () => {
-		angle -= ANGLE
+	const atoms = {
+		F: () => drawLine(ctx, opt),
+		f: () => drawLineHalf(ctx, opt),
+		M: () => move(ctx, opt),
+		m: () => moveHalf(ctx, opt),
+		'+': () => turnClockwise(ctx, opt),
+		'-': () => turnCounterclockwise(ctx, opt),
+		'[': () => savePositionAngle(ctx, opt),
+		']': () => restorePositionAngle(ctx, opt),
+		'{': () => saveColor(ctx, opt),
+		'}': () => restoreColor(ctx, opt),
+		S: () => switchColor(ctx, opt),
+		O: () => scaleUp(ctx, opt),
+		Z: () => scaleDown(ctx, opt),
+		'=': () => flipHorizontally(ctx, opt),
+		'|': () => flipVertically(ctx, opt),
+		'$': () => hump(ctx, opt)
 	}
 
-	const switchColor = () => {
-		_finishLine()
-		color = (color + 1) % COLORS.length
-	}
-
-	const savePositionAngle = () => {
-		xStack.push(x)
-		yStack.push(y)
-		angleStack.push(angle)
-	}
-	const restorePositionAngle = () => {
-		_finishLine()
-		x = xStack.pop()
-		y = yStack.pop()
-		angle = angleStack.pop()
-	}
-
-	const saveColor = () => {
-		colorStack.push(color)
-	}
-	const restoreColor = () => {
-		_finishLine()
-		color = colorStack.pop()
-	}
-
-	const scaleUp = () => {
-		_finishLine()
-		scaleX /= .8
-		scaleY /= .8
-	}
-	const scaleDown = () => {
-		_finishLine()
-		scaleX *= .8
-		scaleY *= .8
-	}
-
-	const flipHorizontally = () => {
-		_finishLine()
-		scaleX *= -1
-		x *= -1
-	}
-	const flipVertically = () => {
-		_finishLine()
-		scaleY *= -1
-		y *= -1
-	}
-
-	const hump = () => {
-		items.push(h('circle', {
-			cx: '' + round(x),
-			cy: '' + round(y),
-			r: '' + round(1.5 * Math.abs(scaleX)),
-			stroke: COLORS[color],
-			'stroke-width': '' + round(.7 * Math.sqrt(Math.abs(scaleX)))
-		}))
-	}
-
-	const generate = lindenmayer(rules, {
-		F: drawLine,
-		f: drawLineHalf,
-		M: move,
-		m: moveHalf,
-		'+': turnClockwise,
-		'-': turnCounterclockwise,
-		'[': savePositionAngle,
-		']': restorePositionAngle,
-		'{': saveColor,
-		'}': restoreColor,
-		S: switchColor,
-		O: scaleUp,
-		Z: scaleDown,
-		'=': flipHorizontally,
-		'|': flipVertically,
-		'$': hump
-	})
+	const generate = lindenmayer(rules, atoms)
 	generate(axiom, iterations)
-	_finishLine()
+	_finishLine(ctx, opt)
 
-	const width = Math.abs(maxX - minX)
-	const height = Math.abs(maxY - minY)
+	const width = Math.abs(ctx.maxX - ctx.minX)
+	const height = Math.abs(ctx.maxY - ctx.minY)
 	return h('svg', {
 		viewBox: [
-			round(minX) - 10, round(minY) - 10,
+			round(ctx.minX) - 10, round(ctx.minY) - 10,
 			round(width) + 20, round(height) + 20
 		].join(' '),
 		xmlns: 'http://www.w3.org/2000/svg'
-	}, items)
+	}, ctx.items)
 }
 
 module.exports = generate
